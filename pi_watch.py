@@ -10,9 +10,10 @@ import winsound
 import json
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.chrome.options import Options
 import win32ui
 import win32con
+from threading import Thread
 
 OPTIONS = {
 	"refresh_rate": 10,
@@ -27,15 +28,23 @@ OPTIONS = {
 LOCATIONS = [("Canada", "CA"), ("China", "CN"), ("France", "FR"), ("Germany", "DE"), ("Netherlands", "NL"), ("Spain", "ES"), ("Sweden", "SE"), ("Switzerland", "CH"), ("United Kingdom", "UK"), ("United States", "US")]
 MODELS = [("CM4", "CM4"), ("Pi 3", "RPI3"), ("Pi 4", "RPI4"), ("Pi Zero", "SC0")]
 
+audioThreads = [None, None, None]
+notifyThread = [None]
+
 
 def PlaySound():
 	if OPTIONS['sound']:
-		winsound.PlaySound("./Congratulations! Your Pokémon Evolved!.wav", winsound.SND_FILENAME)
-		# winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
+		# winsound.PlaySound("./Congratulations! Your Pokémon Evolved!.wav", winsound.SND_FILENAME)
+		for i in range(3):
+			audioThreads[i] = Thread(target=winsound.PlaySound, args=("SystemAsterisk", winsound.SND_ALIAS))
+			audioThreads[i].daemon = True
+			audioThreads[i].start()
 
-def Notify(message):
+def Notify():
 	if OPTIONS['notification']:
-		win32ui.MessageBox("A device is in stock!!!!", "RPi Locator Watcher", win32con.MB_ICONASTERISK)
+		notifyThread[0] = Thread(target=win32ui.MessageBox, args=("A device is in stock!!!!", "RPi Locator Watcher", win32con.MB_ICONASTERISK))
+		notifyThread[0].daemon = True
+		notifyThread[0].start()
 
 def CheckWebsite(driver):
 	# find the table with the class "table-success"
@@ -68,11 +77,17 @@ def CheckWebsite(driver):
 
 		if not notified:
 			print("\033[1;30;42m%s 🎉 %d Hits!\033[0;0m" % (time.strftime("%H:%M:%S"), len(driverRows)))
+			print()
 			PlaySound()
-			Notify("RPi Locator hit!")
+			Notify()
 			notified = True
 
-		print ("\033[0;0m%s | %s %s %s %s %s %s" % (time.strftime("%H:%M:%S"), model, name, link, lastChecked, website, lastStock))
+		print ("%s | \033[5;32m[%s]\033[0;0m %s" % (time.strftime("%H:%M:%S"), model, name))
+		print("\t 🌐 URL: \033[4;34m%s\033[0;0m" % (link))
+		print("\t 🌎 Location: %s (%s)" % (list(filter(lambda x: x[1] == location, LOCATIONS))[0][0], location))
+		print("\t 💲 Price: %s" % (price))
+		print("\t ⌛ Last checked: %s" % (lastChecked))
+		print()
 
 	if not notified and OPTIONS['verbose']:
 		print("%s 😪 No hits" % time.strftime("%H:%M:%S"))
@@ -85,7 +100,7 @@ def Run():
 	# options.add_argument("--headless")
 	options.headless = True
 	options.page_load_strategy = "normal"
-	driver = webdriver.Chrome()
+	driver = webdriver.Chrome(options=options)
 
 	# load window
 	driver.get("https://rpilocator.com/")
@@ -108,6 +123,7 @@ def Run():
 			time.sleep(OPTIONS['refresh_rate'] * 60)
 		except KeyboardInterrupt:
 			# exit the program
+			print("\033[1;37;45m🔚 Exiting...\033[0;0m")
 			running = False
 
 	driver.quit()
@@ -192,6 +208,7 @@ def SelectModels():
 	# get the user input
 	userInput = list(map(int, input("Enter the new models (seperate with a \",\" for multiple): ").replace(" ", "").split(",")))
 
+	OPTIONS['models'] = []
 	if i+1 in userInput:
 		# if the user wants to select all models
 		OPTIONS['models'] = ["ALL"]
